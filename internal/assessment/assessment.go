@@ -8,7 +8,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -89,19 +88,8 @@ var thresholdMeta = map[string]struct {
 }
 var defaultThresholdVersion = DefaultThresholdVersion
 
-var (
-	activeThresholdsOnce sync.Once
-	activeThresholds     map[string]bool
-)
-
-func activeThresholdIndex() map[string]bool {
-	activeThresholdsOnce.Do(func() {
-		activeThresholds = make(map[string]bool, len(thresholdMeta))
-		for version, meta := range thresholdMeta {
-			activeThresholds[version] = meta.status == "active"
-		}
-	})
-	return activeThresholds
+func thresholdStatus(v string) string {
+	return thresholdMeta[v].status
 }
 
 func ThresholdCatalog() []ThresholdEntry {
@@ -115,7 +103,7 @@ func ThresholdCatalog() []ThresholdEntry {
 }
 func DefaultThreshold() string { return defaultThresholdVersion }
 func SetDefaultThreshold(v string) error {
-	if !ValidThresholdVersion(v) || thresholdMeta[v].status != "active" {
+	if _, ok := thresholds[v]; !ok || thresholdMeta[v].status != "active" {
 		return fmt.Errorf("阈值配置版本不存在或已停用: %s", v)
 	}
 	defaultThresholdVersion = v
@@ -147,18 +135,18 @@ func ThresholdSnapshot(v string) (ThresholdEntry, bool) {
 
 func ValidThresholdVersion(v string) bool {
 	_, ok := thresholds[v]
-	return ok && activeThresholdIndex()[v]
+	return ok && thresholdStatus(v) == "active"
 }
 func Compare(s Signal, primary, other string) (Result, *Result, error) {
 	if !ValidThresholdVersion(primary) {
-		return Result{}, nil, fmt.Errorf("阈值配置版本不存在: %s", primary)
+		return Result{}, nil, fmt.Errorf("阈值配置版本不存在或已停用: %s", primary)
 	}
 	r := AssessVersion(s, primary)
 	if other == "" {
 		return r, nil, nil
 	}
 	if !ValidThresholdVersion(other) {
-		return Result{}, nil, fmt.Errorf("阈值配置版本不存在: %s", other)
+		return Result{}, nil, fmt.Errorf("阈值配置版本不存在或已停用: %s", other)
 	}
 	c := AssessVersion(s, other)
 	return r, &c, nil
