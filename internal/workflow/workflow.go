@@ -1224,11 +1224,6 @@ func (s *Service) ApproveWithOptions(id string, rev int, o ApprovalOptions) (sto
 		if strings.TrimSpace(o.LateConfirmedBy) == "" || strings.TrimSpace(o.LateReason) == "" {
 			return c, errors.New("迟交证据需要负责人确认和理由")
 		}
-		now := time.Now()
-		ev.LateConfirmedBy = o.LateConfirmedBy
-		ev.LateReason = o.LateReason
-		ev.LateConfirmedAt = &now
-		s.Store.PutEvidence(ev)
 	}
 	if c.RiskLevel == string(assessment.High) {
 		required := []string{"load_scope", "monitoring_frequency", "site_isolation"}
@@ -1244,12 +1239,8 @@ func (s *Service) ApproveWithOptions(id string, rev int, o ApprovalOptions) (sto
 			return c, errors.New("复核确认理由至少4个字")
 		}
 	}
-	now := time.Now()
-	d := store.Decision{DecisionID: newID(), CaseID: id, Action: action, MonitoringWindow: window, ApprovedBy: by, ApprovedAt: now, Reason: reason, TemplateVersion: "v1", Checklist: o.Checklist, ConfirmedBy: o.ConfirmedBy, ConfirmedReason: o.ConfirmedReason, Status: "active", Supersedes: c.DecisionID, RuleVersion: match.RuleVersion, RuleSummary: match.Reason, MonitoringFrequency: frequency, SiteIsolation: isolation}
-	if o.ConfirmedBy != "" {
-		d.ConfirmedAt = &now
-	}
-	s.Store.PutDecision(d)
+	// Check checkpoint coverage before persisting any decision or mutating case
+	// state, so a failed approval leaves no orphan decision in storage.
 	if len(c.RequiredCheckpoints) > 0 {
 		missing := []string{}
 		for _, cp := range c.RequiredCheckpoints {
@@ -1261,6 +1252,18 @@ func (s *Service) ApproveWithOptions(id string, rev int, o ApprovalOptions) (sto
 			return c, fmt.Errorf("必检点覆盖不足，缺少%s", strings.Join(missing, ","))
 		}
 	}
+	now := time.Now()
+	d := store.Decision{DecisionID: newID(), CaseID: id, Action: action, MonitoringWindow: window, ApprovedBy: by, ApprovedAt: now, Reason: reason, TemplateVersion: "v1", Checklist: o.Checklist, ConfirmedBy: o.ConfirmedBy, ConfirmedReason: o.ConfirmedReason, Status: "active", Supersedes: c.DecisionID, RuleVersion: match.RuleVersion, RuleSummary: match.Reason, MonitoringFrequency: frequency, SiteIsolation: isolation}
+	if o.ConfirmedBy != "" {
+		d.ConfirmedAt = &now
+	}
+	if ev, ok := s.Store.GetEvidenceByCase(id); ok && ev.DueState == "late" && ev.LateConfirmedBy == "" {
+		ev.LateConfirmedBy = o.LateConfirmedBy
+		ev.LateReason = o.LateReason
+		ev.LateConfirmedAt = &now
+		s.Store.PutEvidence(ev)
+	}
+	s.Store.PutDecision(d)
 	if strings.Contains(action, "持续") {
 		n := d.ApprovedAt.Add(parseWindowDuration(window))
 		d.NextReviewAt = n.Format(time.RFC3339)
