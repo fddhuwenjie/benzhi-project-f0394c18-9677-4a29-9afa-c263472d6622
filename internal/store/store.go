@@ -599,10 +599,169 @@ func (s *Store) EventsForCase(id string) []Event {
 	}
 	return out
 }
+// cloneTime returns a copy of a time pointer so mutating the pointed-to value
+// is impossible; callers receive their own pointer. This mirrors how the rest
+// of the codebase aliases *time.Time fields when copying structs.
+func cloneTime(t *time.Time) *time.Time {
+	if t == nil {
+		return nil
+	}
+	v := *t
+	return &v
+}
+
+func (c Case) clone() Case {
+	out := c
+	out.OpenedAt = cloneTime(c.OpenedAt)
+	out.ClosedAt = cloneTime(c.ClosedAt)
+	out.RiskCalculatedAt = cloneTime(c.RiskCalculatedAt)
+	out.SourceCapturedAt = cloneTime(c.SourceCapturedAt)
+	out.CurrentCapturedAt = cloneTime(c.CurrentCapturedAt)
+	out.ThresholdConfirmedAt = cloneTime(c.ThresholdConfirmedAt)
+	out.RetestPlanDueAt = cloneTime(c.RetestPlanDueAt)
+	out.NextReviewAt = cloneTime(c.NextReviewAt)
+	out.FirstDriftAt = cloneTime(c.FirstDriftAt)
+	out.LastDriftAt = cloneTime(c.LastDriftAt)
+	if c.Claim != nil {
+		claim := *c.Claim
+		out.Claim = &claim
+	}
+	if c.ArchiveManifest != nil {
+		m := *c.ArchiveManifest
+		m.DecisionIDs = append([]string(nil), c.ArchiveManifest.DecisionIDs...)
+		m.Anomalies = append([]string(nil), c.ArchiveManifest.Anomalies...)
+		out.ArchiveManifest = &m
+	}
+	if c.PendingCorrection != nil {
+		pc := *c.PendingCorrection
+		pc.DecisionAt = cloneTime(c.PendingCorrection.DecisionAt)
+		out.PendingCorrection = &pc
+	}
+	out.RiskFactors = append([]string(nil), c.RiskFactors...)
+	out.AssociatedAlerts = append([]AlertRef(nil), c.AssociatedAlerts...)
+	out.RiskHistory = append([]RiskSnapshot(nil), c.RiskHistory...)
+	out.ReviewSnapshots = make([]ReviewSnapshot, len(c.ReviewSnapshots))
+	for i, rs := range c.ReviewSnapshots {
+		out.ReviewSnapshots[i] = rs
+		out.ReviewSnapshots[i].RiskFactors = append([]string(nil), rs.RiskFactors...)
+	}
+	out.Checkins = append([]Checkin(nil), c.Checkins...)
+	out.ReviewAttempts = make([]ReviewAttempt, len(c.ReviewAttempts))
+	for i, ra := range c.ReviewAttempts {
+		out.ReviewAttempts[i] = ra
+		out.ReviewAttempts[i].NextReviewAt = cloneTime(ra.NextReviewAt)
+	}
+	out.RequiredCheckpoints = make([]CheckpointProgress, len(c.RequiredCheckpoints))
+	for i, cp := range c.RequiredCheckpoints {
+		out.RequiredCheckpoints[i] = cp
+		out.RequiredCheckpoints[i].ArrivedAt = cloneTime(cp.ArrivedAt)
+		out.RequiredCheckpoints[i].Missing = append([]string(nil), cp.Missing...)
+	}
+	return out
+}
+
+func (e Evidence) clone() Evidence {
+	out := e
+	out.PhotoRefs = append([]string(nil), e.PhotoRefs...)
+	out.History = make([]EvidenceVersion, len(e.History))
+	for i, h := range e.History {
+		out.History[i] = h
+		out.History[i].PhotoRefs = append([]string(nil), h.PhotoRefs...)
+	}
+	out.LateConfirmedAt = cloneTime(e.LateConfirmedAt)
+	return out
+}
+
+func (d Decision) clone() Decision {
+	out := d
+	if len(d.Checklist) > 0 {
+		out.Checklist = make(map[string]bool, len(d.Checklist))
+		for k, v := range d.Checklist {
+			out.Checklist[k] = v
+		}
+	}
+	out.WithdrawnAt = cloneTime(d.WithdrawnAt)
+	out.ConfirmedAt = cloneTime(d.ConfirmedAt)
+	out.SupersededAt = cloneTime(d.SupersededAt)
+	return out
+}
+
+func (t Task) clone() Task {
+	out := t
+	out.DueAt = cloneTime(t.DueAt)
+	out.FirstArrivedAt = cloneTime(t.FirstArrivedAt)
+	out.LastEscalationAt = cloneTime(t.LastEscalationAt)
+	return out
+}
+
+func (b Batch) clone() Batch {
+	out := b
+	out.Items = make([]BatchItem, len(b.Items))
+	for i, it := range b.Items {
+		out.Items[i] = it
+	}
+	return out
+}
+
+func (e Event) clone() Event {
+	out := e
+	if len(e.Data) > 0 {
+		out.Data = make(map[string]any, len(e.Data))
+		for k, v := range e.Data {
+			out.Data[k] = v
+		}
+	}
+	return out
+}
+
+// cloneSnapshot returns a read-only deep copy of the store snapshot so callers
+// cannot mutate the live maps or slices through the returned value. Slice and
+// map headers in a struct value copy still share the underlying backing arrays,
+// which is why each reference-typed field is rebuilt here. Struct values that
+// hold pointers or slices are deep-copied via their clone methods so nested
+// pointer/slice fields cannot reach back into the store's data either.
+func cloneSnapshot(in Snapshot) Snapshot {
+	out := Snapshot{
+		Alerts:    make(map[string]Alert, len(in.Alerts)),
+		Cases:     make(map[string]Case, len(in.Cases)),
+		Evidence:  make(map[string]Evidence, len(in.Evidence)),
+		Decisions: make(map[string]Decision, len(in.Decisions)),
+		Tasks:     make(map[string]Task, len(in.Tasks)),
+		Retests:   make(map[string]Retest, len(in.Retests)),
+		Batches:   make(map[string]Batch, len(in.Batches)),
+	}
+	for k, v := range in.Alerts {
+		out.Alerts[k] = v
+	}
+	for k, v := range in.Cases {
+		out.Cases[k] = v.clone()
+	}
+	for k, v := range in.Evidence {
+		out.Evidence[k] = v.clone()
+	}
+	for k, v := range in.Decisions {
+		out.Decisions[k] = v.clone()
+	}
+	for k, v := range in.Tasks {
+		out.Tasks[k] = v.clone()
+	}
+	for k, v := range in.Retests {
+		out.Retests[k] = v
+	}
+	for k, v := range in.Batches {
+		out.Batches[k] = v.clone()
+	}
+	out.Events = make([]Event, len(in.Events))
+	for i, v := range in.Events {
+		out.Events[i] = v.clone()
+	}
+	out.ThresholdCatalog = append([]any(nil), in.ThresholdCatalog...)
+	return out
+}
 func (s *Store) Snapshot() Snapshot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.data
+	return cloneSnapshot(s.data)
 }
 func (s *Store) SetThresholdCatalog(v []any) {
 	s.mu.Lock()
