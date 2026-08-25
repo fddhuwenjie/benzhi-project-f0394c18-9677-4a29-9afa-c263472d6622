@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -88,6 +89,21 @@ var thresholdMeta = map[string]struct {
 }
 var defaultThresholdVersion = DefaultThresholdVersion
 
+var (
+	activeThresholdsOnce sync.Once
+	activeThresholds     map[string]bool
+)
+
+func activeThresholdIndex() map[string]bool {
+	activeThresholdsOnce.Do(func() {
+		activeThresholds = make(map[string]bool, len(thresholdMeta))
+		for version, meta := range thresholdMeta {
+			activeThresholds[version] = meta.status == "active"
+		}
+	})
+	return activeThresholds
+}
+
 func ThresholdCatalog() []ThresholdEntry {
 	out := make([]ThresholdEntry, 0, len(thresholds))
 	for v, t := range thresholds {
@@ -131,7 +147,7 @@ func ThresholdSnapshot(v string) (ThresholdEntry, bool) {
 
 func ValidThresholdVersion(v string) bool {
 	_, ok := thresholds[v]
-	return ok && thresholdMeta[v].status == "active"
+	return ok && activeThresholdIndex()[v]
 }
 func Compare(s Signal, primary, other string) (Result, *Result, error) {
 	if !ValidThresholdVersion(primary) {
