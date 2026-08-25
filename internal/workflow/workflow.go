@@ -1244,6 +1244,12 @@ func (s *Service) ApproveWithOptions(id string, rev int, o ApprovalOptions) (sto
 			return c, errors.New("复核确认理由至少4个字")
 		}
 	}
+	now := time.Now()
+	d := store.Decision{DecisionID: newID(), CaseID: id, Action: action, MonitoringWindow: window, ApprovedBy: by, ApprovedAt: now, Reason: reason, TemplateVersion: "v1", Checklist: o.Checklist, ConfirmedBy: o.ConfirmedBy, ConfirmedReason: o.ConfirmedReason, Status: "active", Supersedes: c.DecisionID, RuleVersion: match.RuleVersion, RuleSummary: match.Reason, MonitoringFrequency: frequency, SiteIsolation: isolation}
+	if o.ConfirmedBy != "" {
+		d.ConfirmedAt = &now
+	}
+	s.Store.PutDecision(d)
 	if len(c.RequiredCheckpoints) > 0 {
 		missing := []string{}
 		for _, cp := range c.RequiredCheckpoints {
@@ -1255,18 +1261,12 @@ func (s *Service) ApproveWithOptions(id string, rev int, o ApprovalOptions) (sto
 			return c, fmt.Errorf("必检点覆盖不足，缺少%s", strings.Join(missing, ","))
 		}
 	}
-	now := time.Now()
-	d := store.Decision{DecisionID: newID(), CaseID: id, Action: action, MonitoringWindow: window, ApprovedBy: by, ApprovedAt: now, Reason: reason, TemplateVersion: "v1", Checklist: o.Checklist, ConfirmedBy: o.ConfirmedBy, ConfirmedReason: o.ConfirmedReason, Status: "active", Supersedes: c.DecisionID, RuleVersion: match.RuleVersion, RuleSummary: match.Reason, MonitoringFrequency: frequency, SiteIsolation: isolation}
-	if o.ConfirmedBy != "" {
-		d.ConfirmedAt = &now
-	}
 	if strings.Contains(action, "持续") {
 		n := d.ApprovedAt.Add(parseWindowDuration(window))
 		d.NextReviewAt = n.Format(time.RFC3339)
 		c.NextReviewAt = &n
 		c.RetestPlanDueAt = &n
 	}
-	s.Store.PutDecision(d)
 	if o.ChangeOfDecision {
 		if old, ok := s.Store.GetDecision(c.DecisionID); ok {
 			old.Status = "superseded"
