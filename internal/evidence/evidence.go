@@ -198,7 +198,11 @@ func VerifyChain(e store.Evidence) (bool, int, string) {
 		if i > 0 {
 			prev = versions[i-1].Hash
 		}
-		if v.Hash != HashWithPrev(prev, Hash(in)) && !(i == 0 && v.Hash == Hash(in)) {
+		actual := HashWithPrev(prev, Hash(in))
+		if i > 0 {
+			actual = verifyVersionedLink(prev, Hash(in))
+		}
+		if v.Hash != actual && !(i == 0 && v.Hash == Hash(in)) {
 			return false, v.Version, "证据链断裂"
 		}
 	}

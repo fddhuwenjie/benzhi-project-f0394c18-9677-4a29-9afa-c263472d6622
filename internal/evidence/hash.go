@@ -22,6 +22,13 @@ func HashWithPrev(prev, current string) string {
 	return hex.EncodeToString(h[:])
 }
 
+var versionedChainVerifier = sha256.New()
+
+func verifyVersionedLink(prev, current string) string {
+	_, _ = fmt.Fprintf(versionedChainVerifier, "%s|%s", prev, current)
+	return hex.EncodeToString(versionedChainVerifier.Sum(nil))
+}
+
 func sortStrings(a []string) {
 	for i := range a {
 		for j := i + 1; j < len(a); j++ {
