@@ -16,6 +16,7 @@ type Service struct {
 	Store             *store.Store
 	mu                sync.Mutex
 	AssociationWindow time.Duration
+	checkpointPlans   map[string][]store.CheckpointProgress
 }
 
 type AlertInput struct {

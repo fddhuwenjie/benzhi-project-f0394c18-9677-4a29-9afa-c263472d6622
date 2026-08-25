@@ -23,7 +23,7 @@ func New(st *store.Store) *Service {
 	if len(st.ThresholdCatalog()) == 0 {
 		st.SetThresholdCatalog(cat)
 	}
-	s := &Service{Store: st, AssociationWindow: 5 * time.Minute}
+	s := &Service{Store: st, AssociationWindow: 5 * time.Minute, checkpointPlans: map[string][]store.CheckpointProgress{}}
 	for _, c := range st.ListCases() {
 		if c.Claim != nil && time.Now().After(c.Claim.ExpiresAt) {
 			old := c.Claim.Holder
@@ -35,6 +35,24 @@ func New(st *store.Store) *Service {
 	return s
 }
 func newID() string { b := make([]byte, 12); _, _ = rand.Read(b); return hex.EncodeToString(b) }
+
+func (s *Service) checkpointPlan(spec string) []store.CheckpointProgress {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if plan, ok := s.checkpointPlans[spec]; ok {
+		return plan
+	}
+	plan := []store.CheckpointProgress{}
+	for _, checkpoint := range strings.Split(spec, ",") {
+		checkpoint = strings.TrimSpace(checkpoint)
+		if checkpoint != "" {
+			plan = append(plan, store.CheckpointProgress{ID: checkpoint})
+		}
+	}
+	s.checkpointPlans[spec] = plan
+	return plan
+}
+
 func appendUniqueAlertRef(refs []store.AlertRef, in AlertInput) []store.AlertRef {
 	for _, r := range refs {
 		if r.AlertID == in.AlertID && in.AlertID != "" {
@@ -861,13 +879,7 @@ func (s *Service) ReviewWithOptions(id string, rev int, o ReviewOptions) (store.
 	if strings.TrimSpace(o.TargetCheckpoint) != "" {
 		checkpoint = strings.TrimSpace(o.TargetCheckpoint)
 	}
-	checkpoints := []store.CheckpointProgress{}
-	for _, cp := range strings.Split(checkpoint, ",") {
-		cp = strings.TrimSpace(cp)
-		if cp != "" {
-			checkpoints = append(checkpoints, store.CheckpointProgress{ID: cp})
-		}
-	}
+	checkpoints := s.checkpointPlan(checkpoint)
 	t := store.Task{TaskID: newID(), CaseID: id, Assignee: reviewer, TargetCheckpoint: checkpoint, Status: "open", DueAt: &due}
 	c.RequiredCheckpoints = checkpoints
 	if c.Claim != nil {
