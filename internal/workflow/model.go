@@ -16,6 +16,7 @@ type Service struct {
 	Store             *store.Store
 	mu                sync.Mutex
 	AssociationWindow time.Duration
+	archiveManifest   *store.ArchiveManifest
 }
 
 type AlertInput struct {

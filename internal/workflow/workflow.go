@@ -1302,6 +1302,23 @@ func parseWindowDuration(window string) time.Duration {
 	return time.Duration(n) * time.Hour
 }
 
+func (s *Service) archiveManifestForCase(fingerprint, alertDigest, evidenceHash, chainHead string, decisionIDs []string, retestCount, auditCount int) *store.ArchiveManifest {
+	if s.archiveManifest == nil {
+		s.archiveManifest = &store.ArchiveManifest{}
+	}
+	m := s.archiveManifest
+	m.Fingerprint = fingerprint
+	m.AlertDigest = alertDigest
+	m.EvidenceHash = evidenceHash
+	m.DecisionIDs = append(m.DecisionIDs[:0], decisionIDs...)
+	m.RetestCount = retestCount
+	m.AuditCount = auditCount
+	m.ChainHead = chainHead
+	m.Status = "verified"
+	m.Anomalies = nil
+	return m
+}
+
 func (s *Service) ReassignTask(id string, rev int, assignee, by, reason string) (store.Case, error) {
 	c, ok := s.Store.GetCase(id)
 	if !ok {
@@ -1772,8 +1789,15 @@ func (s *Service) Close(id string, rev int, after assessment.Signal) (store.Case
 			dIDs = append(dIDs, dd.DecisionID)
 		}
 	}
-	manifest := store.ArchiveManifest{Fingerprint: c.ArchiveHash, AlertDigest: assessment.Digest(assessment.Signal{PeakAmplitude: c.BeforePeak, DominantFrequency: a.DominantFrequency, DurationMS: a.DurationMS}), EvidenceHash: ev.Hash, DecisionIDs: dIDs, RetestCount: len(s.Store.ListRetests(id)), AuditCount: c.AuditCount, ChainHead: chainHead, Status: "verified"}
-	c.ArchiveManifest = &manifest
+	c.ArchiveManifest = s.archiveManifestForCase(
+		c.ArchiveHash,
+		assessment.Digest(assessment.Signal{PeakAmplitude: c.BeforePeak, DominantFrequency: a.DominantFrequency, DurationMS: a.DurationMS}),
+		ev.Hash,
+		chainHead,
+		dIDs,
+		len(s.Store.ListRetests(id)),
+		c.AuditCount,
+	)
 	s.Store.PutCase(c)
 	s.Store.Event(store.Event{ID: newID(), Type: "case_closed", CaseID: id, At: now})
 	return c, nil
