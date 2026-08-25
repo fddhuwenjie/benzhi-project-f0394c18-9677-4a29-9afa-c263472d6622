@@ -10,4 +10,5 @@ type Snapshot struct {
 	Events           []Event
 	Batches          map[string]Batch
 	ThresholdCatalog []any
+	Idempotency      map[string]any
 }

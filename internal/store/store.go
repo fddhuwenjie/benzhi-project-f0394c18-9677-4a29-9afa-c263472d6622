@@ -314,7 +314,7 @@ type Store struct {
 }
 
 func New(path string) *Store {
-	s := &Store{path: path, seen: map[string]any{}, data: Snapshot{Alerts: map[string]Alert{}, Cases: map[string]Case{}, Evidence: map[string]Evidence{}, Decisions: map[string]Decision{}, Tasks: map[string]Task{}, Retests: map[string]Retest{}, Batches: map[string]Batch{}}}
+	s := &Store{path: path, seen: map[string]any{}, data: Snapshot{Alerts: map[string]Alert{}, Cases: map[string]Case{}, Evidence: map[string]Evidence{}, Decisions: map[string]Decision{}, Tasks: map[string]Task{}, Retests: map[string]Retest{}, Batches: map[string]Batch{}, Idempotency: map[string]any{}}}
 	if path != "" {
 		s.load()
 	}
@@ -348,6 +348,9 @@ func (s *Store) load() {
 		if d.Batches == nil {
 			d.Batches = map[string]Batch{}
 		}
+		if d.Idempotency == nil {
+			d.Idempotency = map[string]any{}
+		}
 		// Backfill hash fields for snapshots written before audit chaining.
 		last := map[string]string{}
 		for i := range d.Events {
@@ -372,6 +375,7 @@ func (s *Store) load() {
 			last[e.CaseID] = e.Hash
 		}
 		s.data = d
+		s.seen = d.Idempotency
 	}
 }
 func (s *Store) persist() {
@@ -744,6 +748,12 @@ func (s *Store) Once(key string) (bool, any) {
 	v, ok := s.seen[key]
 	return ok, v
 }
-func (s *Store) Mark(key string, v any) { s.mu.Lock(); defer s.mu.Unlock(); s.seen[key] = v }
+func (s *Store) Mark(key string, v any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.seen[key] = v
+	s.data.Idempotency[key] = v
+	s.persist()
+}
 
 var ErrNotFound = errors.New("not found")
