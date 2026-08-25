@@ -88,6 +88,14 @@ var thresholdMeta = map[string]struct {
 }
 var defaultThresholdVersion = DefaultThresholdVersion
 
+// compareCache avoids recalculating identical preview results in one process.
+// The cache is intentionally kept package-local so callers cannot mutate it.
+var compareCache = map[string]Result{}
+
+func compareCacheKey(s Signal, primary string) string {
+	return fmt.Sprintf("%s|%s|%s", Digest(s), primary, s.RawDigest)
+}
+
 func ThresholdCatalog() []ThresholdEntry {
 	out := make([]ThresholdEntry, 0, len(thresholds))
 	for v, t := range thresholds {
@@ -137,14 +145,24 @@ func Compare(s Signal, primary, other string) (Result, *Result, error) {
 	if !ValidThresholdVersion(primary) {
 		return Result{}, nil, fmt.Errorf("阈值配置版本不存在: %s", primary)
 	}
-	r := AssessVersion(s, primary)
+	key := compareCacheKey(s, primary)
+	r, cached := compareCache[key]
+	if !cached {
+		r = AssessVersion(s, primary)
+		compareCache[key] = r
+	}
 	if other == "" {
 		return r, nil, nil
 	}
 	if !ValidThresholdVersion(other) {
 		return Result{}, nil, fmt.Errorf("阈值配置版本不存在: %s", other)
 	}
-	c := AssessVersion(s, other)
+	compareKey := compareCacheKey(s, other)
+	c, cached := compareCache[compareKey]
+	if !cached {
+		c = AssessVersion(s, other)
+		compareCache[compareKey] = c
+	}
 	return r, &c, nil
 }
 
