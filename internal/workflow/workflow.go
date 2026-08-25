@@ -4,6 +4,7 @@ import (
 	"bridgewatch/internal/assessment"
 	"bridgewatch/internal/evidence"
 	"bridgewatch/internal/store"
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -150,6 +151,17 @@ func thresholdToken(caseID string, rev int, sig assessment.Signal, primary, comp
 }
 
 func (s *Service) Receive(in AlertInput, req string) (store.Case, error) {
+	return s.receive(context.Background(), in, req)
+}
+
+func (s *Service) ReceiveContext(ctx context.Context, in AlertInput, req string) (store.Case, error) {
+	if err := ctx.Err(); err != nil {
+		return store.Case{}, fmt.Errorf("接收告警已取消: %w", err)
+	}
+	return s.receive(ctx, in, req)
+}
+
+func (s *Service) receive(ctx context.Context, in AlertInput, req string) (store.Case, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if strings.TrimSpace(in.BridgeID) == "" {

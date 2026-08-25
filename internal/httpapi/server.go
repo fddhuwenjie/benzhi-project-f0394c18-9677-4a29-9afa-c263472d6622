@@ -183,7 +183,7 @@ func (s *Server) alerts(w http.ResponseWriter, r *http.Request) {
 			if tol == 0 {
 				tol = a.ClockSkewToleranceSec
 			}
-			c, err := s.WF.Receive(workflow.AlertInput{AlertID: a.AlertID, BridgeID: a.BridgeID, SensorID: a.SensorID, CapturedAt: a.CapturedAt, ReceivedAt: a.ReceivedAt, DriftTolerance: time.Duration(tol) * time.Second, DensityWindow: time.Duration(a.DensityWindowSec) * time.Second, Signal: assessment.Signal{PeakAmplitude: a.PeakAmplitude, DominantFrequency: a.DominantFrequency, DurationMS: a.DurationMS, RawDigest: a.RawDigest}}, reqID)
+			c, err := s.WF.ReceiveContext(r.Context(), workflow.AlertInput{AlertID: a.AlertID, BridgeID: a.BridgeID, SensorID: a.SensorID, CapturedAt: a.CapturedAt, ReceivedAt: a.ReceivedAt, DriftTolerance: time.Duration(tol) * time.Second, DensityWindow: time.Duration(a.DensityWindowSec) * time.Second, Signal: assessment.Signal{PeakAmplitude: a.PeakAmplitude, DominantFrequency: a.DominantFrequency, DurationMS: a.DurationMS, RawDigest: a.RawDigest}}, reqID)
 			if err != nil {
 				items = append(items, map[string]any{"item": i, "ok": false, "error": err.Error()})
 				batchItems = append(batchItems, store.BatchItem{Index: i, RequestID: reqID, Fingerprint: workflow.AlertFingerprint(workflow.AlertInput{AlertID: a.AlertID, BridgeID: a.BridgeID, SensorID: a.SensorID, CapturedAt: a.CapturedAt, Signal: assessment.Signal{PeakAmplitude: a.PeakAmplitude, DominantFrequency: a.DominantFrequency, DurationMS: a.DurationMS, RawDigest: a.RawDigest}}), Alert: store.Alert{AlertID: a.AlertID, BridgeID: a.BridgeID, SensorID: a.SensorID, CapturedAt: a.CapturedAt, PeakAmplitude: a.PeakAmplitude, DominantFrequency: a.DominantFrequency, DurationMS: a.DurationMS, RawDigest: a.RawDigest}, Status: "failed", Error: err.Error()})
@@ -224,7 +224,7 @@ func (s *Server) alerts(w http.ResponseWriter, r *http.Request) {
 	if tol == 0 {
 		tol = q.ClockSkewToleranceSec
 	}
-	c, e := s.WF.Receive(workflow.AlertInput{AlertID: q.AlertID, BridgeID: q.BridgeID, SensorID: q.SensorID, CapturedAt: q.CapturedAt, ReceivedAt: q.ReceivedAt, DriftTolerance: time.Duration(tol) * time.Second, DensityWindow: time.Duration(q.DensityWindowSec) * time.Second, Signal: assessment.Signal{PeakAmplitude: q.PeakAmplitude, DominantFrequency: q.DominantFrequency, DurationMS: q.DurationMS, RawDigest: q.RawDigest}}, r.Header.Get("Idempotency-Key"))
+	c, e := s.WF.ReceiveContext(r.Context(), workflow.AlertInput{AlertID: q.AlertID, BridgeID: q.BridgeID, SensorID: q.SensorID, CapturedAt: q.CapturedAt, ReceivedAt: q.ReceivedAt, DriftTolerance: time.Duration(tol) * time.Second, DensityWindow: time.Duration(q.DensityWindowSec) * time.Second, Signal: assessment.Signal{PeakAmplitude: q.PeakAmplitude, DominantFrequency: q.DominantFrequency, DurationMS: q.DurationMS, RawDigest: q.RawDigest}}, r.Header.Get("Idempotency-Key"))
 	if e != nil {
 		write(w, map[string]string{"error": e.Error()}, 400)
 		return
