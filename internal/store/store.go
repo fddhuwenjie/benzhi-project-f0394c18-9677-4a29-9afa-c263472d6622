@@ -307,10 +307,11 @@ type Event struct {
 	Hash      string         `json:"hash,omitempty"`
 }
 type Store struct {
-	mu   sync.RWMutex
-	data Snapshot
-	path string
-	seen map[string]any
+	mu         sync.RWMutex
+	data       Snapshot
+	path       string
+	persistDir string
+	seen       map[string]any
 }
 
 func New(path string) *Store {
@@ -378,11 +379,20 @@ func (s *Store) persist() {
 	if s.path == "" {
 		return
 	}
+	if s.persistDir == "" {
+		dir := filepath.Dir(s.path)
+		_ = os.MkdirAll(dir, 0755)
+		resolved, err := filepath.EvalSymlinks(dir)
+		if err != nil {
+			resolved = dir
+		}
+		s.persistDir = resolved
+	}
 	b, _ := json.MarshalIndent(s.data, "", "  ")
-	tmp := s.path + ".tmp"
-	_ = os.MkdirAll(filepath.Dir(s.path), 0755)
+	target := filepath.Join(s.persistDir, filepath.Base(s.path))
+	tmp := target + ".tmp"
 	if os.WriteFile(tmp, b, 0644) == nil {
-		_ = os.Rename(tmp, s.path)
+		_ = os.Rename(tmp, target)
 	}
 }
 func (s *Store) Event(e Event) {
